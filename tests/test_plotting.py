@@ -199,10 +199,7 @@ def test_event_markers_visible_at_slide_size(tmp_path):
     # Downscale the saved PNG to 50 % (slide size) and check each marker colour.
     img = mpimg.imread(fname)[:, :, :3]
     small = img[::2, ::2]  # nearest-neighbour 50 % downscale
-    bbox = ax.get_window_extent()
-    scale_x = small.shape[1] / (fig.get_size_inches()[0] * fig.dpi)
-    scale_y = small.shape[0] / (fig.get_size_inches()[1] * fig.dpi)
-    # bbox_inches="tight" crops the canvas, so locate markers by colour instead:
+    # bbox_inches="tight" crops the canvas, so locate markers by colour:
     for code, rgb in expected.items():
         target = np.array(rgb) / 255.0
         dist = np.sqrt(((small - target) ** 2).sum(axis=2)) * 255

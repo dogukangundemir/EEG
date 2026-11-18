@@ -1,0 +1,6 @@
+data/
+on004347/
+*.fif
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store

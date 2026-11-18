@@ -227,8 +227,17 @@ def get_events(raw: mne.io.BaseRaw):
     mask = np.isin(events[:, 2], list(ann_code_to_name))
     events_out = events[mask].copy()
     # Remap to the canonical readable codes (== the original values here).
-    for ann_code, name in ann_code_to_name.items():
-        events_out[events_out[:, 2] == ann_code, 2] = EVENT_ID[name]
+    # The new codes are computed from a *snapshot* of the original codes in a
+    # single pass.  Writing the new codes in place, one source code at a time,
+    # would cascade: a condition whose target code equals another condition's
+    # not-yet-remapped source code (e.g. annotations named 'random'/'reflection'
+    # first coded random=1, reflection=2, with EVENT_ID = {reflection: 1,
+    # random: 3}) would be remapped twice and the conditions would merge.
+    original_codes = events_out[:, 2].copy()
+    code_to_value = {code: EVENT_ID[name] for code, name in ann_code_to_name.items()}
+    events_out[:, 2] = [
+        code_to_value[code] for code in original_codes
+    ]
 
     event_id = {name: EVENT_ID[name] for name in set(ann_code_to_name.values())}
     return events_out, event_id

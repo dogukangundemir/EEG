@@ -4,3 +4,5 @@ on004347/
 __pycache__/
 .ipynb_checkpoints/
 .DS_Store
+.venv/
+*.part

@@ -118,6 +118,24 @@ def plot_raw_with_events(
         verbose=False,
     )
 
+    # MNE draws all event markers as one LineCollection with linewidth 0.5 at
+    # zorder 10003, *below* the EEG traces (zorder 10005).  Where traces cross
+    # a marker they paint over it, so at slide size some markers look grey
+    # instead of their condition colour.  Draw them thicker, opaque and above
+    # the traces so every marker shows its colour.
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import to_rgba
+
+    marker_rgba = {to_rgba(c) for c in colors.values()}
+    all_collections = [c for ax in fig.axes for c in ax.collections]
+    for coll in all_collections:
+        if isinstance(coll, LineCollection) and len(coll.get_colors()) and all(
+            tuple(c) in marker_rgba for c in map(tuple, coll.get_colors())
+        ):
+            coll.set_linewidth(2.5)
+            coll.set_alpha(1.0)
+            coll.set_zorder(10010)
+
     # MNE's raw ploter colors the event lines but may not draw a legend;
     # add a small one (one coloured line per condition) so the markers read
     # reflection / random on a static slide figure.

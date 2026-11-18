@@ -158,3 +158,56 @@ def test_no_annotation_bands_with_real_plot(raw):
         if type(c).__name__ == "FillBetweenPolyCollection"
     ]
     assert len(fills) == 0
+
+
+def test_event_markers_visible_at_slide_size(tmp_path):
+    """Markers are drawn above the traces and keep their colour at 50 % size.
+
+    Regression test: MNE draws the event lines 0.5 px wide *below* the traces,
+    so on a downscaled slide some markers looked grey instead of their colour.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.image as mpimg
+    import mne
+    import numpy as np
+    from matplotlib.collections import LineCollection
+
+    from src.plotting import plot_raw_with_events
+
+    sfreq = 256.0
+    rng = np.random.default_rng(0)
+    info = mne.create_info([f"EEG{i:02d}" for i in range(20)], sfreq, "eeg")
+    raw = mne.io.RawArray(rng.standard_normal((20, int(30 * sfreq))) * 20e-6, info, verbose=False)
+    onsets = [3.0, 7.0, 11.0, 15.0]
+    codes = [3, 1, 3, 1]
+    events = np.array([[int(t * sfreq), 0, c] for t, c in zip(onsets, codes)])
+    event_id = {"reflection": 1, "random": 3}
+    expected = {1: (31, 119, 180), 3: (214, 39, 40)}
+
+    fname = tmp_path / "raw.png"
+    fig = plot_raw_with_events(raw, events, event_id, start=0.0, duration=20, fname=fname)
+
+    ax = fig.mne.ax_main
+    trace_z = max(line.get_zorder() for line in ax.lines)
+    marker_colls = [c for c in ax.collections if isinstance(c, LineCollection) and c.get_zorder() == 10010]
+    assert marker_colls, "event LineCollection not restyled"
+    assert all(c.get_zorder() > trace_z for c in marker_colls)
+    assert all(min(c.get_linewidths()) >= 2 for c in marker_colls)
+
+    # Downscale the saved PNG to 50 % (slide size) and check each marker colour.
+    img = mpimg.imread(fname)[:, :, :3]
+    small = img[::2, ::2]  # nearest-neighbour 50 % downscale
+    bbox = ax.get_window_extent()
+    scale_x = small.shape[1] / (fig.get_size_inches()[0] * fig.dpi)
+    scale_y = small.shape[0] / (fig.get_size_inches()[1] * fig.dpi)
+    # bbox_inches="tight" crops the canvas, so locate markers by colour instead:
+    for code, rgb in expected.items():
+        target = np.array(rgb) / 255.0
+        dist = np.sqrt(((small - target) ** 2).sum(axis=2)) * 255
+        cols = np.where((dist < 80).sum(axis=0) > small.shape[0] * 0.3)[0]
+        # two events per condition -> two separate column groups expected
+        groups = np.split(cols, np.where(np.diff(cols) > 3)[0] + 1) if len(cols) else []
+        assert len(groups) >= 2, f"event code {code}: expected 2 visible markers, found {len(groups)}"
+    matplotlib.pyplot.close(fig)

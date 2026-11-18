@@ -110,3 +110,22 @@ def test_get_events_synthetic_no_condition_merge():
     assert set(events_out[:, 2]) == {io.EVENT_ID["reflection"], io.EVENT_ID["random"]}
     counts = {name: int((events_out[:, 2] == code).sum()) for name, code in event_id.items()}
     assert counts == {"reflection": 4, "random": 5}
+
+
+def test_get_events_synthetic_no_255_marker():
+    """Same as the merge test above but WITHOUT the stray '255' annotation.
+
+    The previous test passed even on the old buggy code: the extra '255'
+    annotation shifts MNE's codes (it sorts first), so 'random' got code 2
+    and 'reflection' code 3, and the in-place remap no longer collided.
+    Without the marker the bank order is random=1, reflection=2 — the order
+    that triggers the in-place cascade on the old code — so this test fails
+    on the old implementation and guards the fix.
+    """
+    raw = _synthetic_raw(["random"] * 5 + ["reflection"] * 4)
+    events_out, event_id = io.get_events(raw)
+
+    assert set(event_id) == set(io.EVENT_ID)
+    assert set(events_out[:, 2]) == {io.EVENT_ID["reflection"], io.EVENT_ID["random"]}
+    counts = {name: int((events_out[:, 2] == code).sum()) for name, code in event_id.items()}
+    assert counts == {"reflection": 4, "random": 5}

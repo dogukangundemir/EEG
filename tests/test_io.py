@@ -1,12 +1,6 @@
-import sys
-from pathlib import Path
-
 import mne
 import numpy as np
 import pytest
-
-# Make src/ importable when pytest is run from any directory.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import io  # noqa: E402
 
@@ -60,6 +54,26 @@ def test_po7_po8_present(raw):
     loc = {ch: c["loc"] for ch, c in zip(raw.ch_names, raw.info["chs"])}
     for ch in ("PO7", "PO8"):
         assert np.all(np.isfinite(loc[ch][:3])), f"{ch} has no electrode position"
+
+
+def test_montage_is_biosemi64(raw):
+    """Positions in the loaded raw must match the standard biosemi64 template.
+
+    electrodes.tsv is in CTF coordinates with quoted names, so mne-bids
+    cannot apply it (see src/io.py docstring) and we set the standard
+    template by hand.  This pins the positions to that template.
+    """
+    eeg_names = [ch for ch, t in zip(raw.ch_names, raw.get_channel_types()) if t == "eeg"]
+    info = mne.create_info(eeg_names, sfreq=512.0, ch_types="eeg")
+    reference = mne.io.RawArray(
+        np.zeros((len(eeg_names), 2)), info, verbose=False
+    )
+    reference.set_montage("biosemi64")
+
+    loc = {ch: c["loc"] for ch, c in zip(raw.ch_names, raw.info["chs"])}
+    ref_loc = {ch: c["loc"] for ch, c in zip(reference.ch_names, reference.info["chs"])}
+    for ch in ("PO7", "PO8"):
+        np.testing.assert_allclose(loc[ch][:3], ref_loc[ch][:3], rtol=0, atol=1e-6)
 
 
 def test_events_both_conditions_between_70_and_90(events):

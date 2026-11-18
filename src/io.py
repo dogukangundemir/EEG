@@ -37,12 +37,18 @@ reasoning):
    ``Status`` channel is dropped if present.
 
 4. **No usable electrode positions** reach the ``Raw`` object through
-   mne-bids (issue 1), so a standard montage is set explicitly
-   (``biosemi64``, whose 64 names match the BDF names exactly; EXG channels
-   have no known positions and are left as ``'n/a'`` with a warning via
-   ``on_missing='warn'``).  Note the mismatch is itself documented:
-   ``coordsystem.json`` says CTF coordinates with an EEGLAB description and
-   an EasyCap actiCAP cap on a BioSemi amplifier.
+   mne-bids, so a standard montage is set explicitly.  Two dataset facts
+   explain why the standard template is used instead of the sidecar:
+
+   - ``electrodes.tsv`` is written in **CTF coordinates (mm, "EEGLAB"**
+     description) *and* carries the same quoted names as ``channels.tsv``,
+     so mne-bids could not apply it to the BDF electrode names anyway.
+   - We therefore use the **standard ``biosemi64`` template**: the 64 names
+     match the BDF names exactly, the head frame is exactly what topomaps
+     need, and no digitised electrode positions exist for this dataset.
+     In the returned ``Raw`` the positions are the standard biosemi64
+     template positions in the head frame (PO7/PO8 verified identical to
+     the template).
 """
 
 from __future__ import annotations
@@ -172,10 +178,15 @@ def load_raw(subject, bids_root=BIDS_ROOT, preload=True) -> mne.io.Raw:
             warnings.filterwarnings("ignore", message=".*channels.tsv sidecar.*")
             warnings.filterwarnings("ignore", message=".*Cannot set channel type.*")
             raw = read_raw_bids(bids_path, on_ch_mismatch="warn")
+    except FileNotFoundError:
+        # Not a sidecar-warning problem: the file itself is missing.
+        # Re-raise so callers get a clear error instead of a silent fallback.
+        raise
     except Exception as exc:
         warnings.warn(
-            f"read_raw_bids failed ({exc!r}); falling back to "
-            "read_raw_bdf + manual montage/typing. See src/io.py docstring."
+            f"read_raw_bids failed ({exc!r}); retrying via the quoted-channels"
+            " workaround path (read_raw_bdf + manual montage/typing)."
+            " See src/io.py docstring."
         )
         raw = _load_fallback(bids_root, subject)
 

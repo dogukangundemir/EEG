@@ -6,35 +6,14 @@ Currently two functions used by ``notebooks/01_explore.ipynb``:
   marked (M2 deliverable: "plot of continuous EEG with events marked").
 - :func:`plot_psd` — power spectral density, to document line noise and
   drift.
+
+Callers choose the matplotlib backend themselves; the notebook runs headless
+under nbconvert, where matplotlib uses ``Agg`` automatically.
 """
 
 from __future__ import annotations
 
-import os
-
 import matplotlib
-
-# ---------------------------------------------------------------------------
-# Headless support.  matplotlib.pyplot is imported lazily by the plot
-# functions below; the backend is only *forced* to "Agg" when there is no
-# display at all (checked via ``DISPLAY``/``WAYLAND_DISPLAY``), so notebooks
-# with a working desktop keep their interactive widgets.
-# ---------------------------------------------------------------------------
-
-
-def _use_headless_backend() -> None:
-    """Switch matplotlib to the ``Agg`` backend if no display is available.
-
-    No-op on Windows (there is never a ``DISPLAY`` variable there, but
-    figures still work) and whenever the user already configured a backend.
-    """
-    if matplotlib.get_backend().lower() == "agg":
-        return
-    if not sys.platform.startswith("win"):
-        # On Windows there is no DISPLAY variable at all, yet interactive
-        # backends work fine -- nothing to detect there.
-        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
-            matplotlib.use("Agg")
 
 
 def plot_raw_with_events(
@@ -85,7 +64,8 @@ def plot_raw_with_events(
         show=False,
         scalings=dict(eeg=50e-6, eog=150e-6),
     )
-    fig.savefig(str(fname), dpi=150, bbox_inches="tight") if fname is not None else None
+    if fname is not None:
+        fig.savefig(str(fname), dpi=150, bbox_inches="tight")
     return fig
 
 

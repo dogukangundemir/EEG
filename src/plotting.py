@@ -89,14 +89,25 @@ def plot_raw_with_events(
     fallback = ["#2ca02c", "#9467bd", "#ff7f0e"]
     for i, name in enumerate(event_id):
         name_color.setdefault(name, fallback[i % len(fallback)])
-    # MNE expects event_color keyed by the integer event *code* (1, 3, ...);
-    # a name-keyed dict is silently ignored and the default colours are used.
+    # MNE expects event_color keyed by the integer event *code* (1, 3, ...).
+    # MNE 1.13 resolves name keys through event_id, so a name-keyed dict
+    # would also work; we still key by the integer code because it is
+    # explicit and robust (independent of event_id changes).
     colors = {event_id[name]: name_color[name] for name in event_id}
 
+    # The events array is the only marker source we want here, but MNE's raw
+    # ploter *also* draws the raw's own annotations ("1", "3", ...) in its
+    # default colours, with translucent bands: on a slide these read as
+    # wrongly coloured markers.  MNE 1.13 has no explicit "hide annotations"
+    # option, but annotation_regex filters which annotation labels are drawn;
+    # a never-matching regex "$^" hides them all.  This is the cheapest
+    # correct approach: no copy of the data (unlike raw.copy() +
+    # set_annotations(None)) and no mutation of the caller's raw.annotations.
     fig = raw.plot(
         events=events,
         event_id=event_id,
         event_color=colors,
+        annotation_regex="$^",
         start=start,
         duration=duration,
         picks=picks,

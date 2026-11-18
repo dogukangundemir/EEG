@@ -65,9 +65,8 @@ def test_event_color_keyed_by_codes_and_matches_legend(raw, monkeypatch):
     """event_color passed to raw.plot must be keyed by the integer event
     codes and agree with the legend colours.
 
-    Regression: a name-keyed dict is silently ignored by MNE (it expects
-    codes), so the markers came out in the default colours while the legend
-    claimed otherwise.
+    MNE 1.13 resolves name keys through event_id, so either keying works;
+    we key by the integer codes because that is explicit and robust.
     """
     import matplotlib.pyplot as plt
 
@@ -116,3 +115,46 @@ def test_legend_does_not_cover_traces(raw, monkeypatch):
     plt.close(fig)
     assert not leg_bbox.overlaps(traces_bbox)
     assert leg_bbox.y1 <= traces_bbox.y0  # entirely below the trace axes
+
+
+def test_annotations_hidden_and_untouched(raw):
+    """The events array is the only marker source: the raw's own annotations
+    must not appear in the figure (no "1"/"3"/"255" labels, no bands), and
+    the caller's raw.annotations must be unchanged afterwards.
+    """
+    raw.set_annotations(
+        mne.Annotations(
+            onset=[5.0, 12.0, 17.0],
+            duration=[0.5, 0.5, 0.5],
+            description=["1", "3", "255"],
+        )
+    )
+    before = raw.annotations.copy()
+
+    fig = plot_raw_with_events(raw, EVENTS, EVENT_ID, duration=20)
+    fig.canvas.draw()
+    texts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    for label in ("1", "3", "255"):
+        assert label not in texts
+
+    assert raw.annotations == before
+
+
+def test_no_annotation_bands_with_real_plot(raw):
+    """With the real MNE plot, no translucent annotation bands remain:
+    the FillBetweenPolyCollection that MNE uses to draw the bands must be
+    gone entirely.
+    """
+    raw.set_annotations(
+        mne.Annotations(onset=[5.0], duration=[10.0], description=["3"])
+    )
+    posterior = ["P1", "Pz", "POz", "PO7", "PO8", "O1", "Iz", "O2"]
+    fig = plot_raw_with_events(raw, EVENTS, EVENT_ID, picks=posterior, duration=20)
+    fig.canvas.draw()
+    fills = [
+        c
+        for ax in fig.axes
+        for c in ax.collections
+        if type(c).__name__ == "FillBetweenPolyCollection"
+    ]
+    assert len(fills) == 0

@@ -173,10 +173,35 @@ def load_raw(subject, bids_root=BIDS_ROOT, preload=True) -> mne.io.Raw:
 
     try:
         with warnings.catch_warnings():
-            # Expected/known warnings caused by the quoted names in
-            # channels.tsv (see module docstring); not re-raised here.
-            warnings.filterwarnings("ignore", message=".*channels.tsv sidecar.*")
-            warnings.filterwarnings("ignore", message=".*Cannot set channel type.*")
+            # Expected/known RuntimeWarnings from read_raw_bids, all caused
+            # by the dataset sidecars (see module docstring):
+            # - electrodes.tsv is in CTF coordinates, so mne synthesizes
+            #   fiducials instead of reading digitized ones;
+            # - the quoted EXG1-EXG8 names in channels.tsv/electrodes.tsv do
+            #   not match the raw names, so those channels end up without
+            #   locations;
+            # - for the same reason the sidecar montage matches none of the
+            #   72 sidecar channel positions;
+            # - participants.tsv columns species/handedness have no MNE
+            #   equivalent.
+            # The standard biosemi64 montage is applied afterwards, so the
+            # missing-position warnings are harmless.
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning,
+                message=r"No fiducial points found for ctf_head montage\.",
+            )
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning,
+                message=r"There are channels without locations \(n/a\)",
+            )
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning,
+                message=r"DigMontage is only a subset of info\.",
+            )
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning,
+                message=r"Unable to map the following column\(s\) to MNE:",
+            )
             raw = read_raw_bids(bids_path, on_ch_mismatch="warn")
     except FileNotFoundError:
         # Not a sidecar-warning problem: the file itself is missing.
@@ -211,6 +236,14 @@ def get_events(raw: mne.io.BaseRaw):
         Readable names -> integer codes, i.e. a subset of ``EVENT_ID``
         ({"reflection": 1, "random": 3}); the block-start marker (255) is
         excluded.
+
+    Raises
+    ------
+    ValueError
+        If the raw has no annotations (``raw.annotations`` is None or
+        empty), or if ``mne.events_from_annotations`` cannot produce
+        events (mne raises this with a descriptive message, e.g. for
+        unsupported annotation values).
 
     Notes
     -----
@@ -250,5 +283,9 @@ def get_events(raw: mne.io.BaseRaw):
         code_to_value[code] for code in original_codes
     ]
 
-    event_id = {name: EVENT_ID[name] for name in set(ann_code_to_name.values())}
+    # Build event_id in the fixed EVENT_ID order so the printed dict is
+    # reproducible across runs.
+    event_id = {
+        name: EVENT_ID[name] for name in EVENT_ID if name in ann_code_to_name.values()
+    }
     return events_out, event_id

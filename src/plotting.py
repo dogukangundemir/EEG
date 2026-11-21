@@ -13,8 +13,6 @@ under nbconvert, where matplotlib uses ``Agg`` automatically.
 
 from __future__ import annotations
 
-import matplotlib
-
 
 def plot_raw_with_events(
     raw,

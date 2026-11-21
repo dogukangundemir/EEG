@@ -85,8 +85,8 @@ EXTERNAL_CH_TYPES: dict[str, str] = {f"EXG{i}": "eog" for i in range(1, 9)}
 
 
 def _normalize_subject(subject) -> str:
-    """Accept 1, "1" or "001" and return the 3-digit BIDS subject id."""
-    return str(subject).strip().zfill(3)
+    """Accept 1, "1", "001" or "sub-001" and return the 3-digit BIDS id."""
+    return str(subject).strip().removeprefix("sub-").zfill(3)
 
 
 def _set_channel_types(raw: mne.io.BaseRaw) -> None:
@@ -156,7 +156,7 @@ def load_raw(subject, bids_root=BIDS_ROOT, preload=True) -> mne.io.Raw:
     Parameters
     ----------
     subject : int | str
-        Subject identifier; "1", "001" and 1 are all accepted.
+        Subject identifier; 1, "1", "001" and "sub-001" are all accepted.
     bids_root : pathlib.Path | str
         BIDS dataset root (default: ``<repo>/data/on004347``).
     preload : bool
@@ -202,6 +202,24 @@ def load_raw(subject, bids_root=BIDS_ROOT, preload=True) -> mne.io.Raw:
                 "ignore", category=RuntimeWarning,
                 message=r"Unable to map the following column\(s\) to MNE:",
             )
+            # The quoted names in channels.tsv do not match the 73 raw
+            # channels (72 quoted sidecar names vs. 73 BDF channels).
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning,
+                message=(
+                    r"The number of channels in the channels\.tsv sidecar "
+                    r"file \(72\) does not match"
+                ),
+            )
+            # Same cause: read_raw_bids cannot apply channels.tsv types to
+            # the raw names, so every quoted sidecar name looks missing.
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning,
+                message=(
+                    r"Cannot set channel type for the following channels, "
+                    r"as they are missing in the raw data"
+                ),
+            )
             raw = read_raw_bids(bids_path, on_ch_mismatch="warn")
     except FileNotFoundError:
         # Not a sidecar-warning problem: the file itself is missing.
@@ -209,9 +227,9 @@ def load_raw(subject, bids_root=BIDS_ROOT, preload=True) -> mne.io.Raw:
         raise
     except Exception as exc:
         warnings.warn(
-            f"read_raw_bids failed ({exc!r}); retrying via the quoted-channels"
-            " workaround path (read_raw_bdf + manual montage/typing)."
-            " See src/io.py docstring."
+            f"read_raw_bids failed ({type(exc).__name__}: {exc}); retrying via"
+            " the quoted-channels workaround path (read_raw_bdf + manual"
+            " montage/typing). See src/io.py docstring."
         )
         raw = _load_fallback(bids_root, subject)
 

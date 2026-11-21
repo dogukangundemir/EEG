@@ -4,6 +4,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 import mne
@@ -41,6 +42,7 @@ def test_saves_figure_with_picks(raw, tmp_path):
     shown = [t.get_text() for ax in fig.axes for t in ax.get_yticklabels()]
     assert "PO7" in shown and "PO8" in shown
     assert "Fp1" not in shown
+    plt.close(fig)
 
 
 def test_events_labelled_and_legend(raw):
@@ -49,12 +51,14 @@ def test_events_labelled_and_legend(raw):
     texts = [t.get_text() for leg in fig.legends for t in leg.get_texts()]
     assert any("reflection" in t for t in texts)
     assert any("random" in t for t in texts)
+    plt.close(fig)
 
 
 def test_display_highpass_does_not_touch_data(raw):
     before = raw.get_data().copy()
-    plot_raw_with_events(raw, EVENTS, EVENT_ID, duration=20, highpass=0.1)
+    fig = plot_raw_with_events(raw, EVENTS, EVENT_ID, duration=20, highpass=0.1)
     np.testing.assert_array_equal(raw.get_data(), before)
+    plt.close(fig)
 
 
 REFLECTION_COLOR = "#1f77b4"  # colour-blind-safe blue
@@ -68,8 +72,6 @@ def test_event_color_keyed_by_codes_and_matches_legend(raw, monkeypatch):
     MNE 1.13 resolves name keys through event_id, so either keying works;
     we key by the integer codes because that is explicit and robust.
     """
-    import matplotlib.pyplot as plt
-
     captured = {}
 
     def fake_plot(self, **kwargs):
@@ -98,8 +100,6 @@ def test_event_color_keyed_by_codes_and_matches_legend(raw, monkeypatch):
 
 def test_legend_does_not_cover_traces(raw, monkeypatch):
     """The legend must sit below the time axis, clear of traces and labels."""
-    import matplotlib.pyplot as plt
-
     def fake_plot(self, **kwargs):
         fig = plt.figure()
         ax = fig.add_axes([0.1, 0.1, 0.85, 0.8])  # stand-in for the traces
@@ -131,13 +131,14 @@ def test_annotations_hidden_and_untouched(raw):
     )
     before = raw.annotations.copy()
 
-    fig = plot_raw_with_events(raw, EVENTS, EVENT_ID, duration=20)
+    fig = plot_raw_with_events(raw, EVENTS, EVENT_ID, start=0.0, duration=20)
     fig.canvas.draw()
     texts = [t.get_text() for ax in fig.axes for t in ax.texts]
     for label in ("1", "3", "255"):
         assert label not in texts
 
     assert raw.annotations == before
+    plt.close(fig)
 
 
 def test_no_annotation_bands_with_real_plot(raw):
@@ -158,6 +159,7 @@ def test_no_annotation_bands_with_real_plot(raw):
         if type(c).__name__ == "FillBetweenPolyCollection"
     ]
     assert len(fills) == 0
+    plt.close(fig)
 
 
 def test_event_markers_visible_at_slide_size(tmp_path):
@@ -166,15 +168,8 @@ def test_event_markers_visible_at_slide_size(tmp_path):
     Regression test: MNE draws the event lines 0.5 px wide *below* the traces,
     so on a downscaled slide some markers looked grey instead of their colour.
     """
-    import matplotlib
-
-    matplotlib.use("Agg")
     import matplotlib.image as mpimg
-    import mne
-    import numpy as np
     from matplotlib.collections import LineCollection
-
-    from src.plotting import plot_raw_with_events
 
     sfreq = 256.0
     rng = np.random.default_rng(0)
@@ -207,4 +202,4 @@ def test_event_markers_visible_at_slide_size(tmp_path):
         # two events per condition -> two separate column groups expected
         groups = np.split(cols, np.where(np.diff(cols) > 3)[0] + 1) if len(cols) else []
         assert len(groups) >= 2, f"event code {code}: expected 2 visible markers, found {len(groups)}"
-    matplotlib.pyplot.close(fig)
+    plt.close(fig)

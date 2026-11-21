@@ -91,8 +91,26 @@ def test_events_counts_printout(events, capsys):
     events_out, event_id = events
     counts = {name: int((events_out[:, 2] == code).sum()) for name, code in event_id.items()}
     print(f"event counts for sub-001: {counts}")
-    assert sum(counts.values()) == len(events_out)
-    assert events_out[:, 2].tolist().count(io.EVENT_ID["reflection"]) > 0
+
+    # Independent check: the counts must equal the per-code counts read
+    # directly from the subject's events.tsv sidecar (value column).
+    events_tsv = io.BIDS_ROOT / "sub-001" / "eeg" / "sub-001_task-jacobsen_events.tsv"
+    with open(events_tsv, encoding="utf-8") as f:
+        header = f.readline().rstrip("\n").split("\t")
+        value_col = header.index("value")
+        tsv_values = [int(line.rstrip("\n").split("\t")[value_col]) for line in f]
+    tsv_counts = {
+        name: sum(v == code for v in tsv_values)
+        for name, code in io.EVENT_ID.items()
+    }
+    assert counts == tsv_counts
+
+
+def test_load_raw_accepts_sub_prefix(raw):
+    """load_raw accepts the BIDS prefix form "sub-001" like src.download."""
+    raw2 = io.load_raw("sub-001", preload=False)
+    assert raw2.ch_names == raw.ch_names
+    assert raw2.info["sfreq"] == raw.info["sfreq"]
 
 
 def _synthetic_raw(descriptions, sfreq=512.0):

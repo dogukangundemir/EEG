@@ -57,25 +57,89 @@ Slides for each milestone are due on the Monday before the presentation date at 
 | Milestone | Date | Content | Status | Material |
 |---|---|---|---|---|
 | M1 | 28.10.2026 | Paper and dataset | Completed | [Slide](docs/milestones/M1_BrainBees.pdf) |
-| M2 | 25.11.2026 | Processing pipeline: authors' pipeline vs. our pipeline, data download and loading, continuous data of one subject | In progress | Branch `feature/m2-data-acquisition` |
+| M2 | 25.11.2026 | Processing pipeline: authors' pipeline vs. our pipeline, data download and loading, continuous data of one subject | In progress | Code, notebook and figures on this branch |
 | M3 | 16.12.2026 | First subject analysed | Planned | - |
 | M4 | 27.01.2027 | All subjects | Planned | - |
 | M5 | 10.02.2027 | Further analyses and outlook | Planned | - |
 
+## Milestone 2: data acquisition and first look
+
+### Download
+
+One subject requires about 116 MB of disk space. Reruns skip files that are already complete. From the repository root:
+
+```bash
+python -m src.download --subjects 001   # one subject
+python -m src.download --all            # all 24 subjects
+```
+
+The data are fetched from the public OpenNeuro S3 mirror of `ds004347` into `data/on004347/` (BIDS format). This avoids the DataLad/git-annex dependency.
+
+### Loading
+
+`src.io.load_raw(1)` returns the continuous recording: 64 EEG channels with the standard `biosemi64` montage, 8 external EXG channels typed as EOG, and the Status channel removed. `src.io.get_events(raw)` returns the events and the `event_id` mapping `{reflection: 1, random: 3}`; the block-start code 255 is excluded.
+
+### Exploration
+
+The first exploration of the continuous data is carried out in `notebooks/01_explore.ipynb`. Two figures document the outcome:
+
+- `docs/figures/sub-001_raw_events.png`: 20 s of posterior channels, including PO7 and PO8, with the reflection and random events marked.
+- `docs/figures/sub-001_psd.png`: power spectrum of the recording.
+
+### Facts about sub-001
+
+| Property | Value |
+|---|---|
+| Sampling rate | 512 Hz |
+| Channels | 64 EEG + 8 EXG |
+| Reference | CMS/DRL (re-referencing needed) |
+| Trials | 80 reflection, 79 random |
+| Power line frequency | 50 Hz |
+| Signal characteristics | Frontal channels dominated by blinks; PO3 is a candidate bad channel |
+
+### Known dataset issues
+
+- Channel names in `channels.tsv` are quoted.
+- `electrodes.tsv` uses CTF coordinates, so the standard montage is applied.
+- `events.json` states onsets in ms although they are in seconds.
+- The assignment of the EXG channels to EOG/EMG is not documented.
+
+### Tests
+
+```bash
+python -m pytest -q
+```
+
+The test suite comprises 24 tests.
+
 ## Repository structure
 
-Current content of the `main` branch:
+Content of this branch:
 
 ```text
 EEG/
+├── README.md
+├── requirements.txt
+├── conftest.py
+├── .gitignore
+├── src/
+│   ├── __init__.py
+│   ├── download.py
+│   ├── io.py
+│   └── plotting.py
+├── tests/
+│   ├── test_download.py
+│   ├── test_io.py
+│   └── test_plotting.py
+├── notebooks/
+│   └── 01_explore.ipynb
 ├── docs/
+│   ├── figures/
+│   │   ├── sub-001_raw_events.png
+│   │   └── sub-001_psd.png
 │   └── milestones/
 │       └── M1_BrainBees.pdf
-├── src/
-├── notebooks/
-├── requirements.txt
-├── README.md
-└── .gitignore
+└── data/          # local only, not committed
 ```
 
 Later milestones will extend the repository with additional source modules in `src/` (reusable functions), analysis notebooks in `notebooks/`, and figures. Raw data live in a BIDS structure under `data/`, which is git-ignored; raw data are never committed.

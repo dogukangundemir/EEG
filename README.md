@@ -72,7 +72,8 @@ EEG/
 │   └── milestones/
 │       └── M1_BrainBees.pdf
 ├── src/
-├── notebooks/
+│   └── __init__.py
+├── notebooks/ (placeholder)
 ├── requirements.txt
 ├── README.md
 └── .gitignore

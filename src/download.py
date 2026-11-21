@@ -20,6 +20,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 import urllib.error
@@ -46,6 +47,7 @@ TOP_LEVEL_FILES = (
     ".bidsignore",
     "CHANGES",
 )
+TIMEOUT_S = 30  # seconds allowed for every HTTP request
 
 
 def _normalize_subject(subject) -> str:
@@ -57,7 +59,7 @@ def _remote_size(s3_url):
     """Return the Content-Length of s3_url via a HEAD request, or None."""
     req = urllib.request.Request(s3_url, method="HEAD", headers={"User-Agent": "python-urllib"})
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
             length = resp.headers.get("Content-Length")
             return int(length) if length is not None else None
     except OSError:
@@ -65,12 +67,29 @@ def _remote_size(s3_url):
 
 
 def _fetch_tree():
-    """Return the list of blob dicts from the GitHub tree API (main branch)."""
-    req = urllib.request.Request(GITHUB_TREE_URL, headers={"User-Agent": "python-urllib"})
-    with urllib.request.urlopen(req) as resp:
-        import json
+    """Return the list of blob dicts from the GitHub tree API (main branch).
 
-        data = json.loads(resp.read().decode("utf-8"))
+    Raises RuntimeError when the response is truncated (the listing would be
+    incomplete and files would silently be missing) or when the API answers
+    403/429 (the unauthenticated GitHub API limit was probably hit).
+    """
+    req = urllib.request.Request(GITHUB_TREE_URL, headers={"User-Agent": "python-urllib"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403, 429):
+            raise RuntimeError(
+                f"The GitHub tree API answered HTTP {exc.code}: the "
+                "unauthenticated GitHub API limit (60 requests per hour) was "
+                "probably hit; wait and retry later."
+            ) from exc
+        raise
+    if data.get("truncated"):
+        raise RuntimeError(
+            "The GitHub tree API response has truncated=true: the file "
+            "listing is incomplete and the dataset would silently miss files."
+        )
     return [entry for entry in data.get("tree", []) if entry.get("type") == "blob"]
 
 
@@ -103,7 +122,7 @@ def _download_file(s3_url, dest):
     req = urllib.request.Request(s3_url, headers={"User-Agent": "python-urllib"})
     downloaded = 0
     try:
-        with urllib.request.urlopen(req) as resp, open(part_path, "wb") as f:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp, open(part_path, "wb") as f:
             length = resp.headers.get("Content-Length")
             total = int(length) if length is not None else None
             while True:
@@ -165,6 +184,7 @@ def download_dataset(bids_root, subjects=None, overwrite=False):
     print(f"{len(files)} file(s) selected for subjects {', '.join(subjects)}\n")
 
     downloaded = []
+    failures = []
     for entry in files:
         path = entry["path"]
         dest = root / path
@@ -191,18 +211,27 @@ def download_dataset(bids_root, subjects=None, overwrite=False):
         print(f"[get ] {path} ({(size or 0) / 1e6:.1f} MB)")
         try:
             _download_file(s3_url, dest)
-        except urllib.error.HTTPError as exc:
-            if exc.code != 404:
-                raise
+        except Exception as exc:
             fallback = MIRROR_RAW_BASE + urllib.parse.quote(path)
-            print(f"       not in the OpenNeuro S3 bucket ({exc}); trying NEMAR: {fallback}")
-            _download_file(fallback, dest)
+            print(f"       S3 mirror failed ({exc}); trying NEMAR: {fallback}")
+            try:
+                _download_file(fallback, dest)
+            except Exception as fallback_exc:
+                print(f"[fail] {path} ({fallback_exc})")
+                failures.append((path, fallback_exc))
+                continue
         downloaded.append(path)
 
     print(
         f"\nDone: {len(downloaded)} downloaded, "
-        f"{len(files) - len(downloaded)} skipped."
+        f"{len(files) - len(downloaded) - len(failures)} skipped."
     )
+    if failures:
+        listing = "\n".join(f"  {path}: {error}" for path, error in failures)
+        raise RuntimeError(
+            f"{len(failures)} of {len(files)} file(s) failed to download from "
+            f"both mirrors:\n{listing}"
+        )
     return downloaded
 
 
